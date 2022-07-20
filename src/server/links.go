@@ -2,34 +2,48 @@ package server
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
+	"strconv"
 
+	"github.com/alicansa/go-linkcrawler/dal"
 	"github.com/gorilla/mux"
 )
 
-type Link struct {
-	Url string `json:"url"`
+type LinksHandler struct {
+	linkRepository dal.LinkRepository
 }
 
-type LinksService interface {
-	GetLinks() []Link
+func NewLinksHandler(lr dal.LinkRepository) *LinksHandler {
+	return &LinksHandler{
+		linkRepository: lr,
+	}
 }
 
-func (s *Server) registerLinksHandler(r *mux.Router) {
-	r.HandleFunc("/links", s.getLinks)
+func (h *LinksHandler) registerLinksHandler(r *mux.Router) {
+	r.HandleFunc("/links", h.getLinks)
 }
 
-func (s *Server) getLinks(rw http.ResponseWriter, req *http.Request) {
-	rw.Header().Set("Content-type", "application/json")
+func (h *LinksHandler) getLinks(rw http.ResponseWriter, req *http.Request) {
 
-	links := [2]Link{
-		{Url: "test"},
-		{Url: "test2"},
+	// get crawl job id from the request query params
+	crawlJobIdStr := req.URL.Query().Get("crawlJobId")
+
+	crawlJobId, err := strconv.Atoi(crawlJobIdStr)
+
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	if err := json.NewEncoder(rw).Encode(links); err != nil {
-		log.Printf(err.Error())
+	links, err := h.linkRepository.GetLinks(crawlJobId)
+
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	rw.Header().Set("Content-type", "application/json")
+	if err := json.NewEncoder(rw).Encode(links); err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
 	}
 }

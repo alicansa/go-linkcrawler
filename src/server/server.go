@@ -2,9 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"mime"
 	"net"
 	"net/http"
@@ -22,15 +20,14 @@ type Server struct {
 	// If domain is specified, server is run on TLS using acme/autocert.
 	Addr   string
 	Domain string
-
-	LinksService     *LinksService
-	CrawlJobsService *CrawlJobsService
 }
 
 // ShutdownTimeout is the time given for outstanding requests to finish before shutdown.
 const ShutdownTimeout = 600 * time.Second
 
-func NewServer() *Server {
+func NewServer(
+	lr *LinksHandler,
+	cjh *CrawlJobsHandler) *Server {
 	// configure server and return a pointer to it
 	s := &Server{
 		server: &http.Server{},
@@ -43,9 +40,9 @@ func NewServer() *Server {
 	router := s.router.PathPrefix("/api").Subrouter()
 	{
 		r := router.PathPrefix("/").Subrouter()
-		r.Use(enforceJSONHandler)
-		s.registerLinksHandler(r)
-		s.registerCrawlJobsHandler(r)
+		r.Use(enforceJSONRequest)
+		lr.registerLinksHandler(r)
+		cjh.registerCrawlJobsHandler(r)
 	}
 
 	return s
@@ -103,16 +100,7 @@ func (s *Server) Close() error {
 	return s.server.Shutdown(ctx)
 }
 
-func DecodeJSON[T any](rc io.ReadCloser) (T, error) {
-	var decoded T
-	if err := json.NewDecoder(rc).Decode(&decoded); err != nil {
-		return decoded, err
-	}
-
-	return decoded, nil
-}
-
-func enforceJSONHandler(next http.Handler) http.Handler {
+func enforceJSONRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		contentType := r.Header.Get("Content-Type")
 
